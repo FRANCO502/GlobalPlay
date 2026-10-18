@@ -1,0 +1,16 @@
+// Supabase Edge Function: paystack-verify  (deploy with JWT verification ON, the default).
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { CORS, json, loadEnv, authUser, verifyPayment } from "../_shared/core.ts";
+
+Deno.serve(async (req: Request) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: CORS });
+  if (req.method !== "POST") return json({ error: "method_not_allowed", message: "Use POST." }, 405);
+  const cfg = loadEnv((k) => Deno.env.get(k));
+  if (!cfg.env) return json({ error: "not_configured", message: cfg.message }, 500);
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const user = await authUser(admin, req);
+  if (!user) return json({ error: "unauthorized", message: "Please sign in again." }, 401);
+  let body: unknown;
+  try { body = await req.json(); } catch (_) { return json({ error: "bad_request", message: "Invalid JSON." }, 400); }
+  return verifyPayment({ admin, env: cfg.env }, user, body);
+});
