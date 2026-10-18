@@ -1,0 +1,15 @@
+// Supabase Edge Function: paystack-webhook
+// MUST be deployed with JWT verification OFF (Paystack cannot send a Supabase JWT):
+//   supabase functions deploy paystack-webhook --no-verify-jwt
+// Authenticity comes from the x-paystack-signature HMAC-SHA512 check, done before anything else.
+import { createClient } from "npm:@supabase/supabase-js@2";
+import { loadEnv, handleWebhook } from "../_shared/core.ts";
+
+Deno.serve(async (req: Request) => {
+  if (req.method !== "POST") return new Response("method not allowed", { status: 405 });
+  const cfg = loadEnv((k) => Deno.env.get(k));
+  if (!cfg.env) { console.error(cfg.message); return new Response("not configured", { status: 500 }); }
+  const admin = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!, { auth: { persistSession: false } });
+  const raw = new Uint8Array(await req.arrayBuffer());          // signature is computed over the raw bytes
+  return handleWebhook({ admin, env: cfg.env }, raw, req.headers.get("x-paystack-signature"));
+});
